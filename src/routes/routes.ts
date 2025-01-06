@@ -1,16 +1,29 @@
 import { FastifyInstance } from "fastify";
+import { UserCreateController, UserDeleteController, UserGetController, UserGetOneController, UserUpdateController } from "../modules/users/controllers/user_controller";
+
 
 async function routes(app: FastifyInstance) {
-  app.get("/", async (request, reply) => {
-    reply.send("API funcionando!");
+  // Rota POST para criação de usuário
+  app.post("/user", async (request, reply) => {
+    return new UserCreateController().handle(request, reply);
   });
 
-  app.get("/health", async (request, reply) => {
-    reply.send({ status: "OK" });
+  app.delete("/user", async (request, reply) => {
+    return new UserDeleteController().handle(request, reply);
   });
 
-  app.get("/users", async (request, reply) => {
-    reply.send([{ id: 1, name: "John Doe" }]);
+  // Rota GET para listar todos os usuários
+  app.get("/user", async (request, reply) => {
+    if ((request.query as { email: string }).email) {
+      // Se o parâmetro de email estiver presente, busca um usuário específico
+      return new UserGetOneController().handle(request, reply);
+    }
+    // Caso contrário, busca todos os usuários
+    return new UserGetController().handle(request, reply);
+  });
+
+  app.put("/user", async (request, reply) => {
+    return new UserUpdateController().handle(request, reply);
   });
 }
 
