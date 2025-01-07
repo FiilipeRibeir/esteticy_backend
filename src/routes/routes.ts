@@ -1,30 +1,10 @@
 import { FastifyInstance } from "fastify";
-import { UserCreateController, UserDeleteController, UserGetController, UserGetOneController, UserUpdateController } from "../modules/users/controllers/user_controller";
-
+import appointmentRoutes from "./appointment/route_appointment";
+import userRoutes from "./user/route_user";
 
 async function routes(app: FastifyInstance) {
-  // Rota POST para criação de usuário
-  app.post("/user", async (request, reply) => {
-    return new UserCreateController().handle(request, reply);
-  });
-
-  app.delete("/user", async (request, reply) => {
-    return new UserDeleteController().handle(request, reply);
-  });
-
-  // Rota GET para listar todos os usuários
-  app.get("/user", async (request, reply) => {
-    if ((request.query as { email: string }).email) {
-      // Se o parâmetro de email estiver presente, busca um usuário específico
-      return new UserGetOneController().handle(request, reply);
-    }
-    // Caso contrário, busca todos os usuários
-    return new UserGetController().handle(request, reply);
-  });
-
-  app.put("/user", async (request, reply) => {
-    return new UserUpdateController().handle(request, reply);
-  });
+  await userRoutes(app);         // Registra as rotas de usuários
+  await appointmentRoutes(app); // Registra as rotas de agendamentos
 }
 
 export default routes;
