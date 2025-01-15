@@ -1,19 +1,21 @@
 # API de Agendamento de Compromissos
 
-Esta API permite o gerenciamento de compromissos, permitindo a criação, exclusão, atualização e listagem de compromissos agendados. É possível também filtrar os compromissos por usuário, data e status.
+Esta API permite o gerenciamento de compromissos, incluindo criação, exclusão, atualização e listagem de compromissos agendados. Também é possível filtrar compromissos por usuário, data e status.
 
 ## Endpoints
 
 ### 1. **Criar Compromisso**
    - **Método**: `POST /appointment`
-   - **Descrição**: Cria um novo compromisso com título, usuário, data e status.
+   - **Descrição**: Cria um novo compromisso com os detalhes fornecidos.
    - **Corpo da Requisição**:
      ```json
      {
        "title": "Título do Compromisso",
        "userId": "ID do Usuário",
-       "date": "Data do Compromisso",
-       "status": "PENDENTE" // Status inicial
+       "date": "Data do Compromisso (YYYY-MM-DDTHH:mm:ss.sssZ)",
+       "workId": "ID do Trabalho",
+       "paymentStatus": "PENDENTE", // ou PARCIAL, PAGO
+       "paidAmount": 50.00 // Valor já pago
      }
      ```
    - **Resposta de Sucesso**:
@@ -23,17 +25,20 @@ Esta API permite o gerenciamento de compromissos, permitindo a criação, exclus
        "title": "Título do Compromisso",
        "userId": "ID do Usuário",
        "date": "Data do Compromisso",
-       "status": "PENDENTE"
+       "workId": "ID do Trabalho",
+       "paymentStatus": "PENDENTE",
+       "paidAmount": 50.00
      }
      ```
    - **Resposta de Erro**:
-     - `400 Bad Request`: Se a data não for informada ou já houver um compromisso na mesma data e hora.
+     - `400 Bad Request`: Se campos obrigatórios não forem informados.
+     - `409 Conflict`: Se já houver um compromisso na mesma data e hora.
 
 ---
 
 ### 2. **Listar Compromissos**
    - **Método**: `GET /appointment`
-   - **Descrição**: Retorna todos os compromissos ou filtra por usuário, data e status.
+   - **Descrição**: Retorna todos os compromissos ou filtra com base nos parâmetros fornecidos.
    - **Parâmetros de Query** (opcionais):
      - `userId`: ID do usuário para filtrar.
      - `date`: Data para filtrar compromissos no mesmo dia.
@@ -46,12 +51,14 @@ Esta API permite o gerenciamento de compromissos, permitindo a criação, exclus
          "title": "Título do Compromisso",
          "userId": "ID do Usuário",
          "date": "Data do Compromisso",
-         "status": "PENDENTE"
+         "workId": "ID do Trabalho",
+         "paymentStatus": "PENDENTE",
+         "paidAmount": 50.00
        }
      ]
      ```
-   - **Resposta Caso não tenha lista**:
-     - `200 OK`: Nenhum agendamento encontrado para os critérios informados.
+   - **Resposta Caso não haja compromissos**:
+     - `200 OK`: Lista vazia.
 
 ---
 
@@ -63,7 +70,7 @@ Esta API permite o gerenciamento de compromissos, permitindo a criação, exclus
    - **Resposta de Sucesso**:
      ```json
      {
-       "message": "appointment deletado com sucesso",
+       "message": "Compromisso deletado com sucesso",
        "id": "ID do Compromisso"
      }
      ```
@@ -73,14 +80,14 @@ Esta API permite o gerenciamento de compromissos, permitindo a criação, exclus
 
 ---
 
-### 4. **Reagendar Compromisso**
+### 4. **Atualizar Data do Compromisso**
    - **Método**: `PUT /appointment`
-   - **Descrição**: Atualiza a data de um compromisso e reinicia o status para `PENDENTE`.
+   - **Descrição**: Atualiza a data de um compromisso existente.
    - **Corpo da Requisição**:
      ```json
      {
        "id": "ID do Compromisso",
-       "date": "Nova Data"
+       "date": "Nova Data do Compromisso (YYYY-MM-DDTHH:mm:ss.sssZ)"
      }
      ```
    - **Resposta de Sucesso**:
@@ -90,23 +97,25 @@ Esta API permite o gerenciamento de compromissos, permitindo a criação, exclus
        "title": "Título do Compromisso",
        "userId": "ID do Usuário",
        "date": "Nova Data",
-       "status": "PENDENTE"
+       "workId": "ID do Trabalho",
+       "paymentStatus": "PENDENTE",
+       "paidAmount": 50.00
      }
      ```
    - **Resposta de Erro**:
-     - `400 Bad Request`: Se o ID ou a nova data não forem informados.
+     - `400 Bad Request`: Se o ID ou a nova data não forem fornecidos.
      - `404 Not Found`: Se o compromisso não for encontrado.
 
 ---
 
 ### 5. **Atualizar Status do Compromisso**
    - **Método**: `PATCH /appointment/status`
-   - **Descrição**: Atualiza o status de um compromisso para `CANCELADO` ou `CONCLUÍDO`.
+   - **Descrição**: Atualiza o status de um compromisso.
    - **Corpo da Requisição**:
      ```json
      {
        "id": "ID do Compromisso",
-       "status": "CANCELADO" // ou "CONCLUÍDO"
+       "status": "CANCELADO" // ou CONCLUÍDO
      }
      ```
    - **Resposta de Sucesso**:
@@ -116,11 +125,13 @@ Esta API permite o gerenciamento de compromissos, permitindo a criação, exclus
        "title": "Título do Compromisso",
        "userId": "ID do Usuário",
        "date": "Data do Compromisso",
-       "status": "CANCELADO" // ou "CONCLUÍDO"
+       "workId": "ID do Trabalho",
+       "paymentStatus": "CANCELADO",
+       "paidAmount": 50.00
      }
      ```
    - **Resposta de Erro**:
-     - `400 Bad Request`: Se o ID ou o status não forem informados.
+     - `400 Bad Request`: Se o ID ou o status não forem fornecidos.
      - `404 Not Found`: Se o compromisso não for encontrado.
 
 ---
@@ -129,8 +140,9 @@ Esta API permite o gerenciamento de compromissos, permitindo a criação, exclus
 
 As respostas de erro seguem o padrão:
 
-- **400 Bad Request**: Quando os parâmetros obrigatórios não são fornecidos ou inválidos.
+- **400 Bad Request**: Quando parâmetros obrigatórios não são fornecidos ou inválidos.
 - **404 Not Found**: Quando o compromisso não é encontrado.
+- **409 Conflict**: Quando já existe um compromisso na mesma data e hora.
 - **500 Internal Server Error**: Quando ocorre um erro inesperado no servidor.
 
 ---

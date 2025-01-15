@@ -1,41 +1,56 @@
+import { AppointmentStatus, PaymentStatus } from "@prisma/client";
 import dayjs from "dayjs";
 import HttpError from '../../../config/error';
 import prismaClient from '../../../prisma';
-import {
-  AppointmentCreateProps,
-  AppointmentDeleteProps,
-  AppointmentGetOneProps,
-  AppointmentUpdateProps,
-  AppointmentUpdateStatusProps,
-} from "../model/appoiments_interfaces";
+import { AppointmentCreateProps, AppointmentDeleteProps, AppointmentGetOneProps, AppointmentUpdateProps } from "../model/appoiments_interfaces";
 import findAppointmentById from "../utils/appoiments_utils";
 
 class CreateAppointmentsService {
-  async execute({ title, userId, date, status }: AppointmentCreateProps) {
+  async execute({ title, userId, date, workId, paidAmount }: AppointmentCreateProps) {
     if (!date) {
-      throw new Error('Preencha a data');
+      throw new HttpError('Preencha a data', 400);
     }
 
-    // Verifica se já existe um compromisso na mesma data e hora com status diferente de "CANCELADO"
-    const existingAppointment = await prismaClient.appointment.findFirst({
-      where: {
-        date: date,
-        status: {
-          not: "CANCELADO", // Não permite criar compromisso se o status não for CANCELADO
-        },
-      },
+    if (!workId) {
+      throw new HttpError('O ID do trabalho (workId) é obrigatório', 400);
+    }
+
+    // Busca o trabalho associado
+    const existingWork = await prismaClient.work.findUnique({
+      where: { id: workId },
     });
 
-    if (existingAppointment) {
-      throw new Error('Já existe um compromisso marcado nesta data e hora.');
+    if (!existingWork) {
+      throw new HttpError('Trabalho (workId) não encontrado.', 404);
     }
 
+    const workPrice = existingWork.price;
+
+    // Verifica se o valor pago é pelo menos metade do preço do trabalho
+    const minimumPayment = workPrice / 2;
+
+    if (!paidAmount || paidAmount < minimumPayment) {
+      throw new HttpError(
+        `O valor pago deve ser pelo menos metade do preço do trabalho (${minimumPayment.toFixed(
+          2
+        )}).`,
+        400
+      );
+    }
+
+    // Define o status de pagamento com base no valor pago
+    const paymentStatus =
+      paidAmount >= workPrice ? "CONFIRMADO" : "PENDENTE";
+
+    // Cria o compromisso
     const appointment = await prismaClient.appointment.create({
       data: {
-        title: title,
-        userId: userId,
-        date: date,
-        status: status,
+        title,
+        userId,
+        date,
+        workId,
+        paidAmount,
+        paymentStatus,
       },
     });
 
@@ -49,7 +64,6 @@ class DeleteAppointmentsService {
       throw new HttpError('Informe o ID do appointment', 400);
     }
 
-    const existingAppointment = await findAppointmentById(id);
     const appointment = await prismaClient.appointment.delete({
       where: { id },
     });
@@ -72,8 +86,8 @@ class GetFilteredAppointmentsService {
     if (userId) where.userId = userId;
 
     if (date) {
-      const startOfDay = dayjs(date).startOf('day').toDate(); // Início do dia
-      const endOfDay = dayjs(date).endOf('day').toDate(); // Fim do dia
+      const startOfDay = dayjs(date).startOf('day').toDate();
+      const endOfDay = dayjs(date).endOf('day').toDate();
 
       where.date = {
         gte: startOfDay,
@@ -94,48 +108,75 @@ class GetFilteredAppointmentsService {
 }
 
 class UpdateAppointmentService {
-  async execute({ id, date }: AppointmentUpdateProps) {
-    if (!id || !date) {
-      throw new Error('Informe o ID e a nova data para atualizar');
+  async execute({ id, date, status, paymentStatus, paidAmount }: AppointmentUpdateProps) {
+    if (!id) {
+      throw new Error('Informe o ID para atualizar');
     }
 
-    await findAppointmentById(id); // Verifica se o compromisso existe
+    if (!date && !status && !paymentStatus && paidAmount === undefined) {
+      throw new Error('Informe pelo menos um campo para atualizar');
+    }
+
+    const existingAppointment = await findAppointmentById(id);
+
+    if (!existingAppointment) {
+      throw new Error('Agendamento não encontrado');
+    }
+
+    const updateData: Record<string, any> = {};
+
+    if (date) {
+      updateData.date = date;
+      updateData.status = AppointmentStatus.PENDENTE;
+    }
+
+    if (status) {
+      updateData.status = status;
+    }
+
+    if (paidAmount !== undefined) {
+      if (paidAmount < 0) {
+        throw new Error('O valor pago (paidAmount) não pode ser negativo');
+      }
+
+      // Soma o valor pago ao total atual, usando precisão de ponto flutuante
+      const newTotalPaid = parseFloat(
+        ((existingAppointment.paidAmount || 0) + paidAmount).toFixed(2)
+      );
+
+      // Obtém o preço do trabalho associado
+      const work = await prismaClient.work.findUnique({
+        where: { id: existingAppointment.workId },
+      });
+
+      if (!work) {
+        throw new Error('Trabalho associado ao agendamento não encontrado');
+      }
+
+      // Verifica se o pagamento está completo
+      const workPrice = parseFloat(work.price.toFixed(2));
+      const roundedTotalPaid = parseFloat(newTotalPaid.toFixed(2));
+
+      if (roundedTotalPaid >= workPrice) {
+        updateData.paymentStatus = PaymentStatus.CONFIRMADO; // Enum correto
+        updateData.paidAmount = workPrice; // Garante que o valor não exceda
+      } else {
+        updateData.paymentStatus = PaymentStatus.PENDENTE;
+        updateData.paidAmount = roundedTotalPaid;
+      }
+    }
+
+    if (paymentStatus) {
+      updateData.paymentStatus = paymentStatus;
+    }
 
     const updatedAppointment = await prismaClient.appointment.update({
       where: { id },
-      data: {
-        date,
-        status: 'PENDENTE', // Define o status como PENDENTE ao reagendar
-      },
+      data: updateData,
     });
 
     return updatedAppointment;
   }
 }
 
-class UpdateAppointmentStatusService {
-  async execute({ id, status }: AppointmentUpdateStatusProps) {
-    if (!id || !status) {
-      throw new Error('Informe o ID e o status para atualizar');
-    }
-
-    await findAppointmentById(id); // Verifica se o compromisso existe
-
-    const updatedAppointment = await prismaClient.appointment.update({
-      where: { id },
-      data: { status },
-    });
-
-    return updatedAppointment;
-  }
-}
-
-export {
-  CreateAppointmentsService,
-  DeleteAppointmentsService,
-  GetAppointmentsService,
-  GetFilteredAppointmentsService,
-  UpdateAppointmentService,
-  UpdateAppointmentStatusService
-};
-
+export { CreateAppointmentsService, DeleteAppointmentsService, GetAppointmentsService, GetFilteredAppointmentsService, UpdateAppointmentService };

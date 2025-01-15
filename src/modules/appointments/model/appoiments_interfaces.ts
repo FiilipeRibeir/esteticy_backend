@@ -4,7 +4,9 @@ interface AppointmentCreateProps {
   title: string;
   userId: string;
   date: Date;
-  status: AppointmentStatus;
+  workId: string;
+  paymentStatus: string;
+  paidAmount: number;
 }
 
 interface AppointmentDeleteProps {
@@ -19,21 +21,10 @@ interface AppointmentGetOneProps {
 
 interface AppointmentUpdateProps {
   id: string;
-  date: Date;
-  status: AppointmentStatus;
+  date?: Date;
+  status?: AppointmentStatus;
+  paymentStatus?: string;
+  paidAmount?: number;
 }
 
-// Nova interface para atualizar apenas o status
-interface AppointmentUpdateStatusProps {
-  id: string;
-  status: AppointmentStatus;
-}
-
-export {
-  AppointmentCreateProps,
-  AppointmentDeleteProps,
-  AppointmentGetOneProps,
-  AppointmentUpdateProps,
-  AppointmentUpdateStatusProps
-};
-
+export { AppointmentCreateProps, AppointmentDeleteProps, AppointmentGetOneProps, AppointmentUpdateProps };

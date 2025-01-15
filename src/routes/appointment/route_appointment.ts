@@ -1,12 +1,5 @@
 import { FastifyInstance } from "fastify";
-import {
-  appointmentCreateController,
-  appointmentDeleteController,
-  appointmentGetController,
-  appointmentGetFilteredController,
-  appointmentUpdateController,
-  appointmentUpdateStatusController // Novo controlador para atualizar status
-} from "../../modules/appointments/controller/appointment_controller";
+import { appointmentCreateController, appointmentDeleteController, appointmentGetController, appointmentGetFilteredController, appointmentUpdateController, } from "../../modules/appointments/controller/appointment_controller";
 
 async function appointmentRoutes(app: FastifyInstance) {
   // Rota POST para criação de appointment
@@ -31,14 +24,9 @@ async function appointmentRoutes(app: FastifyInstance) {
     return new appointmentDeleteController().handle(request, reply);
   });
 
-  // Rota PUT para reagendar um appointment (atualizar data e status)
+  // Rota PUT para reagendar um appointment 
   app.put("/appointment", async (request, reply) => {
     return new appointmentUpdateController().handle(request, reply);
-  });
-
-  // Rota PATCH para atualizar apenas o status do appointment
-  app.patch("/appointment", async (request, reply) => {
-    return new appointmentUpdateStatusController().handle(request, reply);
   });
 }
 
