@@ -4,9 +4,10 @@ import HttpError from '../../../config/error';
 import prismaClient from '../../../prisma';
 import { AppointmentCreateProps, AppointmentDeleteProps, AppointmentGetOneProps, AppointmentUpdateProps } from "../model/appoiments_interfaces";
 import findAppointmentById from "../utils/appoiments_utils";
+import { CreatePaymentService } from "../../payments/service/payment_service";
 
 class CreateAppointmentsService {
-  async execute({ title, userId, date, workId, paidAmount }: AppointmentCreateProps) {
+  async execute({ userId, date, workId, email }: AppointmentCreateProps) {
     if (!date) {
       throw new HttpError('Preencha a data', 400);
     }
@@ -16,45 +17,44 @@ class CreateAppointmentsService {
     }
 
     // Busca o trabalho associado
-    const existingWork = await prismaClient.work.findUnique({
+    const Work = await prismaClient.work.findUnique({
       where: { id: workId },
     });
 
-    if (!existingWork) {
+    if (!Work) {
       throw new HttpError('Trabalho (workId) não encontrado.', 404);
     }
 
-    const workPrice = existingWork.price;
-
-    // Verifica se o valor pago é pelo menos metade do preço do trabalho
-    const minimumPayment = workPrice / 2;
-
-    if (!paidAmount || paidAmount < minimumPayment) {
-      throw new HttpError(
-        `O valor pago deve ser pelo menos metade do preço do trabalho (${minimumPayment.toFixed(
-          2
-        )}).`,
-        400
-      );
-    }
-
-    // Define o status de pagamento com base no valor pago
-    const paymentStatus =
-      paidAmount >= workPrice ? "CONFIRMADO" : "PENDENTE";
-
-    // Cria o compromisso
+    // Agora cria o compromisso, associando o pagamento
     const appointment = await prismaClient.appointment.create({
       data: {
-        title,
+        title: Work.name,
         userId,
         date,
         workId,
-        paidAmount,
-        paymentStatus,
+        paymentStatus: PaymentStatus.PENDENTE,
       },
     });
 
-    return appointment;
+    // Cria o pagamento primeiro
+    try {
+      const paymentService = new CreatePaymentService();
+      const paymentCreate = await paymentService.execute({
+        appointmentId: appointment.id,
+        transactionAmount: Work.price,
+        description: Work.name,
+        paymentMethodId: "pix",
+        email,
+      });
+
+      return {
+        appointment,
+        payment: paymentCreate,
+      };
+    } catch (error) {
+      console.error("Erro ao criar pagamento:", error);
+      throw new HttpError("Erro ao processar pagamento.", 500);
+    }
   }
 }
 
@@ -180,3 +180,4 @@ class UpdateAppointmentService {
 }
 
 export { CreateAppointmentsService, DeleteAppointmentsService, GetAppointmentsService, GetFilteredAppointmentsService, UpdateAppointmentService };
+

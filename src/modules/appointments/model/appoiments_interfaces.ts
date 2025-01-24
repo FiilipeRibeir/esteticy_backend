@@ -1,12 +1,11 @@
 import { AppointmentStatus } from "@prisma/client";
 
 interface AppointmentCreateProps {
-  title: string;
   userId: string;
   date: Date;
   workId: string;
-  paymentStatus: string;
-  paidAmount: number;
+  email: string;
+  paidAmount?: number;
 }
 
 interface AppointmentDeleteProps {
@@ -28,3 +27,4 @@ interface AppointmentUpdateProps {
 }
 
 export { AppointmentCreateProps, AppointmentDeleteProps, AppointmentGetOneProps, AppointmentUpdateProps };
+

@@ -6,9 +6,9 @@ import { CreateAppointmentsService, DeleteAppointmentsService, GetAppointmentsSe
 class appointmentCreateController {
   async handle(request: FastifyRequest, response: FastifyReply) {
     try {
-      const { title, userId, date, workId, paymentStatus, paidAmount } = request.body as AppointmentCreateProps;
+      const { userId, date, workId, email } = request.body as AppointmentCreateProps;
       const appointmentService = new CreateAppointmentsService();
-      const appointmentCreate = await appointmentService.execute({ title, userId, date, workId, paymentStatus, paidAmount });
+      const appointmentCreate = await appointmentService.execute({ userId, date, workId, email });
       response.send(appointmentCreate);
     } catch (error) {
       handleError(response, error);
