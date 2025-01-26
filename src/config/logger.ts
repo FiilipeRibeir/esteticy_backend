@@ -2,21 +2,21 @@ import { createLogger, format, transports } from "winston";
 
 const { combine, timestamp, printf, colorize } = format;
 
-// Formato personalizado para os logs
+//format
 const customFormat = printf(({ level, message, timestamp }) => {
     return `[${timestamp}] ${level}: ${message}`;
 });
 
-// Configuração do logger
+// Configuration logger
 const logger = createLogger({
     level: "info",
     format: combine(
         timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
-        colorize(), // Adiciona cores no console
+        colorize(), // Color
         customFormat
     ),
     transports: [
-        new transports.Console(), // Mostra logs no console
+        new transports.Console(), // Show logs in console
     ]
 });
 

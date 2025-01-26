@@ -1,10 +1,10 @@
 import { AppointmentStatus, PaymentStatus } from "@prisma/client";
 import dayjs from "dayjs";
-import HttpError from '../../../config/error';
 import prismaClient from '../../../prisma';
 import { AppointmentCreateProps, AppointmentDeleteProps, AppointmentGetOneProps, AppointmentUpdateProps } from "../model/appoiments_interfaces";
 import findAppointmentById from "../utils/appoiments_utils";
 import { CreatePaymentService } from "../../payments/service/payment_service";
+import { HttpError } from "../../../config/error";
 
 class CreateAppointmentsService {
   async execute({ userId, date, workId, email }: AppointmentCreateProps) {
@@ -36,11 +36,10 @@ class CreateAppointmentsService {
       },
     });
 
-    // Cria o pagamento primeiro
     try {
       const paymentService = new CreatePaymentService();
       const paymentCreate = await paymentService.execute({
-        appointmentId: appointment.id,
+        external_reference: appointment.id,
         transactionAmount: Work.price,
         description: Work.name,
         paymentMethodId: "pix",
@@ -180,4 +179,3 @@ class UpdateAppointmentService {
 }
 
 export { CreateAppointmentsService, DeleteAppointmentsService, GetAppointmentsService, GetFilteredAppointmentsService, UpdateAppointmentService };
-
