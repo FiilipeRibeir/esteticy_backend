@@ -19,6 +19,7 @@ model User {
   updatedAt   DateTime?     @updatedAt
   Appointment Appointment[]
   Work        Work[]
+  Payment     Payment[]
 
   @@map("users")
 }
@@ -57,6 +58,8 @@ model Work {
 
 model Payment {
   id            String        @id @default(uuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
   appointmentId String
   appointment   Appointment   @relation(fields: [appointmentId], references: [id])
   amount        Float

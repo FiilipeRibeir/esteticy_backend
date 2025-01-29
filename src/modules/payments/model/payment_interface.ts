@@ -1,4 +1,5 @@
 interface PaymentCreateProps {
+  userId: string;
   external_reference: string;
   transactionAmount: number;
   description: string;
@@ -7,8 +8,8 @@ interface PaymentCreateProps {
 }
 
 interface PaymentWebhookProps {
-  id: string
-  topic: string
+  resource: string;
+  topic: string;
 }
 
 export { PaymentCreateProps, PaymentWebhookProps };

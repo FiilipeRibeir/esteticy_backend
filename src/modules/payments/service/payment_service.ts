@@ -1,4 +1,4 @@
-import { AppointmentStatus, PaymentStatus } from "@prisma/client";
+import { PaymentStatus } from "@prisma/client";
 import { randomUUID } from "crypto";
 import MercadoPagoConfig, { Payment } from "mercadopago";
 import { HttpError } from "../../../config/error";
@@ -8,32 +8,31 @@ import { PaymentCreateProps, PaymentWebhookProps } from "../model/payment_interf
 import MercadoPagoError from "../utils/Error";
 
 class CreatePaymentService {
-  async execute({ external_reference, transactionAmount, description, paymentMethodId, email }: PaymentCreateProps): Promise<any> {
+  async execute({ userId, external_reference, transactionAmount, description, paymentMethodId, email }: PaymentCreateProps): Promise<any> {
+    const user = await prismaClient.user.findUnique({
+      where: { id: userId },
+    });
 
-    const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
-
-    if (!token) {
-      logger.error("MERCADO_PAGO_ACCESS_TOKEN is not defined");
-      throw new MercadoPagoError("MERCADO_PAGO_ACCESS_TOKEN is not defined");
+    if (!user) {
+      throw new HttpError("user not found", 404);
     }
 
     const client = new MercadoPagoConfig({
-      accessToken: token,
+      accessToken: /* user.accessToken */ process.env.MERCADO_PAGO_ACCESS_TOKEN || "",
       options: { timeout: 5000 },
     });
 
     const payment = new Payment(client);
 
     const body = {
-      external_reference,
       transaction_amount: transactionAmount,
       description,
       payment_method_id: paymentMethodId,
       payer: {
         email,
       },
-      notification_url:
-        "https://esteticybackend-production.up.railway.app/webhook",
+      notification_url: process.env.WEBHOOK_URL,
+      external_reference,
     };
 
     const requestOptions = {
@@ -53,6 +52,7 @@ class CreatePaymentService {
 
       const paymentDb = await prismaClient.payment.create({
         data: {
+          userId: userId,
           appointmentId: external_reference,
           amount: transactionAmount,
           status: PaymentStatus.PENDENTE,
@@ -76,100 +76,72 @@ class CreatePaymentService {
   }
 }
 
-class PaymentWebhookService {
-  async execute({ id, topic }: PaymentWebhookProps) {
-    if (!id || !topic) {
-      logger.warn("Incomplete data in webhook", { id, topic });
+class WebhookService {
+  async execute({ resource, topic }: PaymentWebhookProps) {
+    if (!resource || !topic) {
+      logger.warn("Incomplete data in webhook", { resource, topic });
       throw new HttpError("Incomplete data", 400);
     }
 
-    // Obtendo o token do Mercado Pago
-    const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
-
-    if (!token) {
-      logger.error("MERCADO_PAGO_ACCESS_TOKEN is not defined");
-      throw new MercadoPagoError("MERCADO_PAGO_ACCESS_TOKEN is not defined");
-    }
-
-    const client = new MercadoPagoConfig({
-      accessToken: token,
-      options: { timeout: 5000 },
-    });
-
-    switch (topic) {
-      case "payment":
-        try {
-          const payment = new Payment(client);
-
-          const paymentResponse = await payment.get({ id });
-
-          const { transaction_amount: transactionAmount, status, external_reference } =
-            paymentResponse;
-
-          if (!external_reference) {
-            logger.error("External reference not found in payment response.");
-            throw new HttpError("External reference missing", 400);
-          }
-
-          const updatedPayment = await prismaClient.payment.updateMany({
-            where: {
-              transactionId: id,
-            },
-            data: {
-              amount: transactionAmount,
-              status: status === "approved" ? PaymentStatus.CONFIRMADO : PaymentStatus.PENDENTE,
-            },
-          });
-
-          if (updatedPayment.count === 0) {
-            logger.warn("Payment record not found to update.", { id });
-            throw new HttpError("Payment record not found", 404);
-          }
-
-          const totalPaid = await prismaClient.payment.aggregate({
-            _sum: { amount: true },
-            where: {
-              appointmentId: external_reference,
-              status: PaymentStatus.CONFIRMADO,
-            },
-          });
-
-          const appointment = await prismaClient.appointment.findUnique({
-            where: { id: external_reference },
-            include: { work: true },
-          });
-
-          if (!appointment) {
-            logger.error("Appointment not found for external reference.", { external_reference });
-            throw new HttpError("Appointment not found", 404);
-          }
-
-          const isFullyPaid = (totalPaid._sum.amount ?? 0) >= (appointment.work?.price ?? 0);
-
-          await prismaClient.appointment.update({
-            where: { id: external_reference },
-            data: {
-              paymentStatus: isFullyPaid ? PaymentStatus.CONFIRMADO : PaymentStatus.PENDENTE,
-              status: isFullyPaid ? AppointmentStatus.CONCLUIDO : AppointmentStatus.PENDENTE,
-              paidAmount:
-                totalPaid._sum.amount ?? 0
-            },
-          });
-
-          return {
-            message: "Payment and appointment updated successfully",
-            payment: { id, transactionAmount, status },
-          };
-        } catch (error) {
-          logger.error(`Error processing payment webhook: ${(error as Error).message}`);
-          throw new HttpError("Error processing payment webhook", 500);
-        }
-
-      default:
-        logger.warn(`Unrecognized or unsupported event: ${topic}`);
+    try {
+      if (topic !== "payment") {
+        logger.warn(`Unrecognized event: ${topic}`);
         return { message: "Event ignored" };
+      }
+
+      // Buscar o pagamento pelo transactionId
+      const payment = await prismaClient.payment.findUnique({
+        where: { transactionId: resource },
+        include: { user: true },
+      });
+
+      if (!payment || !payment.user) {
+        logger.error("Payment or associated user not found", { resource });
+        throw new HttpError("Payment or user not found", 404);
+      }
+
+      // Criar cliente Mercado Pago
+      const client = new MercadoPagoConfig({
+        accessToken: /* payment.user.accessToken */ process.env.MERCADO_PAGO_ACCESS_TOKEN || "",
+        options: { timeout: 5000 },
+      });
+
+      const paymentApi = new Payment(client);
+      const paymentResponse = await paymentApi.get({ id: resource });
+
+      if (!paymentResponse.external_reference) {
+        logger.error("External reference missing in payment response");
+        throw new HttpError("External reference missing", 400);
+      }
+
+      const { status, transaction_amount: amount, external_reference } = paymentResponse;
+
+      // Atualizar status do pagamento no banco
+      const updatedPayment = await prismaClient.payment.update({
+        where: { transactionId: resource },
+        data: {
+          amount,
+          status: status === "approved" ? PaymentStatus.CONFIRMADO : PaymentStatus.PENDENTE,
+        },
+      });
+
+      await prismaClient.appointment.update({
+        where: { id: external_reference },
+        data: {
+          paymentStatus: updatedPayment.status,
+          paidAmount: amount,
+        },
+      });
+
+      return {
+        message: "Payment and appointment updated successfully",
+        payment: { transactionId: resource, amount, status },
+      };
+    } catch (error) {
+      logger.error(`Error processing webhook: ${error}`, { resource, topic });
+      throw new HttpError("Error processing webhook", 500);
     }
   }
 }
 
-export { CreatePaymentService, PaymentWebhookService };
+export { CreatePaymentService, WebhookService };
