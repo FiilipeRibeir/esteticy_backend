@@ -1,178 +1,140 @@
 import bcrypt from "bcryptjs";
-import HttpError from "../../../config/error";
+import { HttpError } from "../../../config/error";
 import prismaClient from "../../../prisma";
+import { UserCreateProps, UserDeleteProps, UserGetOneProps, UserUpdateProps } from "../model/user_interface";
+import logger from "../../../config/logger";
 
-interface UserCreateProps {
-  name: string;
-  nickname: string;
-  email: string;
-  password: string;
-}
-
-interface UserDeleteProps {
-  id: string;
-}
-
-interface UserUpdateProps {
-  id: string; // ID obrigatório para identificar o usuário
-  name?: string;
-  nickname?: string;
-  email?: string;
-  password?: string;
-}
-
-interface UserGetOneProps {
-  email: string;
-}
-
+// Criação de usuário
 class CreateUserService {
   async execute({ name, nickname, email, password }: UserCreateProps) {
-    // Verifica se todos os campos foram preenchidos
+    logger.info(`Tentativa de criação de usuário: ${email}`);
+
     if (!name || !nickname || !email || !password) {
+      logger.warn("Tentativa de criação de usuário com campos vazios.");
       throw new HttpError("Preencha todos os campos", 400);
     }
 
-    // Valida o formato do email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
+      logger.warn(`E-mail inválido: ${email}`);
       throw new HttpError("E-mail inválido", 400);
     }
 
-    // Verifica se o e-mail já existe no banco de dados
-    const existingUser = await prismaClient.user.findUnique({
-      where: {
-        email: email,
-      },
-    });
+    if (password.length < 8) {
+      logger.warn(`Senha fraca para o e-mail: ${email}`);
+      throw new HttpError("A senha deve ter pelo menos 8 caracteres", 400);
+    }
 
+    const existingUser = await prismaClient.user.findUnique({ where: { email } });
     if (existingUser) {
+      logger.warn(`E-mail já cadastrado: ${email}`);
       throw new HttpError("E-mail já cadastrado", 409);
     }
 
-    // Faz o hash da senha
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Cria o usuário no banco de dados
     const userCreate = await prismaClient.user.create({
-      data: {
-        name,
-        nickname,
-        email,
-        password: hashedPassword,
-        status: true,
-      },
+      data: { name, nickname, email, password: hashedPassword, status: true },
     });
 
+    logger.info(`Usuário criado com sucesso: ${email}`);
     return userCreate;
   }
 }
 
+// Deletar usuário
 class DeleteUserService {
   async execute({ id }: UserDeleteProps) {
-    // Verifica se o ID foi informado
+    logger.info(`Tentativa de deletar usuário ID: ${id}`);
+
     if (!id) {
+      logger.warn("ID do usuário não fornecido.");
       throw new HttpError("Informe o ID do usuário", 400);
     }
 
-    // Verifica se o usuário existe
-    const existingUser = await prismaClient.user.findUnique({
-      where: {
-        id: id,
-      },
-    });
-
+    const existingUser = await prismaClient.user.findUnique({ where: { id } });
     if (!existingUser) {
+      logger.warn(`Usuário não encontrado: ${id}`);
       throw new HttpError("Usuário não encontrado", 404);
     }
 
-    // Deleta o usuário
-    await prismaClient.user.delete({
-      where: {
-        id: id,
-      },
-    });
+    if (!existingUser.status) {
+      logger.warn(`Tentativa de deletar usuário desativado: ${id}`);
+      throw new HttpError("Usuário desativado, não é possível deletá-lo", 400);
+    }
+
+    await prismaClient.user.delete({ where: { id } });
+    logger.info(`Usuário deletado com sucesso: ${id}`);
 
     return { message: "Usuário deletado com sucesso" };
-
   }
 }
 
+// Listar usuários
 class GetUserService {
-  async execute() {
-    const users = await prismaClient.user.findMany();
+  async execute(page = 1, pageSize = 10) {
+    logger.debug(`Listando usuários - Página: ${page}, Tamanho: ${pageSize}`);
+
+    const users = await prismaClient.user.findMany({
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+
     return users;
   }
 }
 
+// Atualizar usuário
 class UpdatedUserService {
   async execute({ id, name, nickname, email, password }: UserUpdateProps) {
-    // Verifica se o ID foi informado
+    logger.info(`Tentativa de atualizar usuário ID: ${id}`);
+
     if (!id) {
+      logger.warn("ID do usuário não fornecido.");
       throw new HttpError("Informe o ID do usuário", 400);
     }
 
-    // Verifica se o usuário existe no banco
-    const existingUser = await prismaClient.user.findUnique({
-      where: {
-        id: id,
-      },
-    });
-
+    const existingUser = await prismaClient.user.findUnique({ where: { id } });
     if (!existingUser) {
+      logger.warn(`Usuário não encontrado: ${id}`);
       throw new HttpError("Usuário não encontrado", 404);
     }
 
-    // Prepara os dados para atualização
     const updateData: Partial<UserUpdateProps> = {};
-
     if (name) updateData.name = name;
     if (nickname) updateData.nickname = nickname;
     if (email) {
-      // Verifica se o e-mail já está em uso por outro usuário
-      const emailExists = await prismaClient.user.findUnique({
-        where: {
-          email: email,
-        },
-      });
-
+      const emailExists = await prismaClient.user.findUnique({ where: { email } });
       if (emailExists && emailExists.id !== id) {
+        logger.warn(`E-mail já está em uso: ${email}`);
         throw new HttpError("E-mail já está em uso", 409);
       }
       updateData.email = email;
     }
     if (password) {
-      // Faz o hash da nova senha
       updateData.password = await bcrypt.hash(password, 10);
     }
 
-    // Atualiza o usuário no banco de dados
-    const updatedUser = await prismaClient.user.update({
-      where: {
-        id: id,
-      },
-      data: updateData,
-    });
+    const updatedUser = await prismaClient.user.update({ where: { id }, data: updateData });
+    logger.info(`Usuário atualizado com sucesso: ${id}`);
 
     return updatedUser;
   }
 }
 
+// Buscar usuário por e-mail
 class GetOneUserService {
   async execute({ email }: UserGetOneProps) {
-    const user = await prismaClient.user.findUnique({
-      where: {
-        email: email, 
-      },
-    });
+    logger.debug(`Buscando usuário por e-mail: ${email}`);
+
+    const user = await prismaClient.user.findUnique({ where: { email } });
 
     if (!user) {
-      throw new Error("Usuário não encontrado"); // Tratar caso o usuário não exista
+      logger.warn(`Usuário não encontrado: ${email}`);
+      throw new HttpError("Usuário não encontrado", 404);
     }
 
     return user;
   }
 }
 
-
 export { CreateUserService, DeleteUserService, GetOneUserService, GetUserService, UpdatedUserService };
-

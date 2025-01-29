@@ -2,7 +2,6 @@ import { FastifyInstance } from "fastify";
 import { UserCreateController, UserDeleteController, UserGetController, UserGetOneController, UserUpdateController } from "../../modules/users/controllers/user_controller";
 
 async function userRoutes(app: FastifyInstance) {
-  // Rota POST para criação de usuário
   app.post("/user", async (request, reply) => {
     return new UserCreateController().handle(request, reply);
   });
@@ -11,7 +10,6 @@ async function userRoutes(app: FastifyInstance) {
     return new UserDeleteController().handle(request, reply);
   });
 
-  // Rota GET para listar todos os usuários
   app.get("/user", async (request, reply) => {
     if ((request.query as { email: string }).email) {
       // Se o parâmetro de email estiver presente, busca um usuário específico
