@@ -1,53 +1,57 @@
-import HttpError from "../../../config/error";
+import { HttpError } from "../../../config/error";
+import logger from "../../../config/logger"; // Importando logger
 import prismaClient from "../../../prisma";
 import { WorkCreateProps, WorkDeleteProps, WorkGetOneProps, WorkUpdateProps } from "../model/work_interfaces";
 
 class WorkCreateService {
   async execute({ userId, name, description, price }: WorkCreateProps) {
-    // Validação de campos obrigatórios
+    logger.info(`Tentativa de criação de trabalho para usuário: ${userId}`);
+
     if (!userId || !name || !price) {
-      throw new HttpError("Usuário, name e preço são obrigatórios", 400);
+      logger.warn("Campos obrigatórios não preenchidos ao criar trabalho.");
+      throw new HttpError("Usuário, nome e preço são obrigatórios", 400);
     }
 
-    // Verificar se o usuário existe
     const existingUser = await prismaClient.user.findUnique({ where: { id: userId } });
     if (!existingUser) {
+      logger.warn(`Usuário não encontrado: ${userId}`);
       throw new HttpError("Usuário não encontrado", 404);
     }
 
-    // Criar o trabalho
     const work = await prismaClient.work.create({
-      data: {
-        userId,
-        name,
-        description,
-        price: price,
-      },
+      data: { userId, name, description, price },
     });
 
+    logger.info(`Trabalho criado com sucesso para usuário: ${userId}`);
     return work;
   }
 }
 
 class WorkDeleteService {
   async execute({ id }: WorkDeleteProps) {
+    logger.info(`Tentativa de deletar trabalho ID: ${id}`);
+
     if (!id) {
+      logger.warn("ID do trabalho não informado.");
       throw new HttpError("Informe o ID do trabalho", 400);
     }
 
     const existingWork = await prismaClient.work.findUnique({ where: { id } });
     if (!existingWork) {
+      logger.warn(`Trabalho não encontrado: ${id}`);
       throw new HttpError("Trabalho não encontrado", 404);
     }
 
-    const work = await prismaClient.work.delete({ where: { id } });
+    await prismaClient.work.delete({ where: { id } });
+    logger.info(`Trabalho deletado com sucesso: ${id}`);
 
-    return work;
+    return { message: "Trabalho deletado com sucesso" };
   }
 }
 
 class WorkGetService {
   async execute() {
+    logger.debug("Listando todos os trabalhos.");
     const works = await prismaClient.work.findMany();
     return works;
   }
@@ -55,63 +59,48 @@ class WorkGetService {
 
 class WorkGetFilteredService {
   async execute({ userId, name, description, price }: WorkGetOneProps) {
-    // Inicializa o objeto `where` para os filtros
+    logger.debug("Filtrando trabalhos com critérios fornecidos.");
+
     const where: any = {};
-
-    // Adiciona filtros condicionalmente, se os parâmetros forem fornecidos
-    if (name) {
-      where.name = {
-        contains: name, // Filtro que verifica se o nome contém a string fornecida
-        mode: 'insensitive', // Ignora maiúsculas/minúsculas
-      };
-    }
-
-    if (description) {
-      where.description = {
-        contains: description, // Filtro que verifica se a descrição contém a string fornecida
-        mode: 'insensitive', // Ignora maiúsculas/minúsculas
-      };
-    }
-
-    if (userId) {
-      where.userId = userId;
-    }
-
+    if (name) where.name = { contains: name, mode: "insensitive" };
+    if (description) where.description = { contains: description, mode: "insensitive" };
+    if (userId) where.userId = userId;
     if (price !== undefined && price !== null) {
       const parsedPrice = parseFloat(price.toString());
       if (isNaN(parsedPrice)) {
+        logger.warn("Tentativa de filtro com preço inválido.");
         throw new HttpError("O preço deve ser um número válido", 400);
       }
-      where.price = parsedPrice; // Filtro exato para o preço
+      where.price = parsedPrice;
     }
 
-    // Realiza a consulta no banco de dados com os filtros aplicados
     const works = await prismaClient.work.findMany({ where });
-
+    logger.debug(`Encontrados ${works.length} trabalhos com os filtros aplicados.`);
     return works;
   }
 }
 
 class WorkUpdateService {
   async execute({ id, name, description, price }: WorkUpdateProps) {
+    logger.info(`Tentativa de atualização do trabalho ID: ${id}`);
+
     if (!id) {
+      logger.warn("ID do trabalho não informado.");
       throw new HttpError("Informe o ID do trabalho", 400);
     }
 
     const existingWork = await prismaClient.work.findUnique({ where: { id } });
     if (!existingWork) {
+      logger.warn(`Trabalho não encontrado: ${id}`);
       throw new HttpError("Trabalho não encontrado", 404);
     }
 
     const work = await prismaClient.work.update({
       where: { id },
-      data: {
-        name,
-        description,
-        price,
-      },
+      data: { name, description, price },
     });
 
+    logger.info(`Trabalho atualizado com sucesso: ${id}`);
     return work;
   }
 }
