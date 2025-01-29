@@ -110,17 +110,17 @@ class GetFilteredAppointmentsService {
 class UpdateAppointmentService {
   async execute({ id, date, status, paymentStatus, paidAmount }: AppointmentUpdateProps) {
     if (!id) {
-      throw new Error('Informe o ID para atualizar');
+      throw new HttpError("Informe o ID para atualizar", 400);
     }
 
     if (!date && !status && !paymentStatus && paidAmount === undefined) {
-      throw new Error('Informe pelo menos um campo para atualizar');
+      throw new HttpError("Informe pelo menos um campo para atualizar", 400);
     }
 
     const existingAppointment = await findAppointmentById(id);
 
     if (!existingAppointment) {
-      throw new Error('Agendamento não encontrado');
+      throw new HttpError("Agendamento não encontrado", 404);
     }
 
     const updateData: Record<string, any> = {};
@@ -136,33 +136,27 @@ class UpdateAppointmentService {
 
     if (paidAmount !== undefined) {
       if (paidAmount < 0) {
-        throw new Error('O valor pago (paidAmount) não pode ser negativo');
+        throw new HttpError("O valor pago não pode ser negativo", 400);
       }
 
-      // Soma o valor pago ao total atual, usando precisão de ponto flutuante
-      const newTotalPaid = parseFloat(
-        ((existingAppointment.paidAmount || 0) + paidAmount).toFixed(2)
-      );
+      const newTotalPaid = parseFloat(((existingAppointment.paidAmount || 0) + paidAmount).toFixed(2));
 
-      // Obtém o preço do trabalho associado
       const work = await prismaClient.work.findUnique({
         where: { id: existingAppointment.workId },
       });
 
       if (!work) {
-        throw new Error('Trabalho associado ao agendamento não encontrado');
+        throw new HttpError("Trabalho associado ao agendamento não encontrado", 404);
       }
 
-      // Verifica se o pagamento está completo
       const workPrice = parseFloat(work.price.toFixed(2));
-      const roundedTotalPaid = parseFloat(newTotalPaid.toFixed(2));
 
-      if (roundedTotalPaid >= workPrice) {
-        updateData.paymentStatus = PaymentStatus.CONFIRMADO; // Enum correto
-        updateData.paidAmount = workPrice; // Garante que o valor não exceda
+      if (newTotalPaid >= workPrice) {
+        updateData.paymentStatus = PaymentStatus.CONFIRMADO;
+        updateData.paidAmount = workPrice;
       } else {
         updateData.paymentStatus = PaymentStatus.PENDENTE;
-        updateData.paidAmount = roundedTotalPaid;
+        updateData.paidAmount = newTotalPaid;
       }
     }
 
@@ -180,4 +174,3 @@ class UpdateAppointmentService {
 }
 
 export { CreateAppointmentsService, DeleteAppointmentsService, GetAppointmentsService, GetFilteredAppointmentsService, UpdateAppointmentService };
-

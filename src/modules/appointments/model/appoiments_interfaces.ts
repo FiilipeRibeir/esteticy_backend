@@ -27,4 +27,3 @@ interface AppointmentUpdateProps {
 }
 
 export { AppointmentCreateProps, AppointmentDeleteProps, AppointmentGetOneProps, AppointmentUpdateProps };
-

@@ -1,4 +1,4 @@
-import HttpError from '../../../config/error';
+import { HttpError } from '../../../config/error';
 import prismaClient from '../../../prisma';
 
 async function findAppointmentById(id: string) {
