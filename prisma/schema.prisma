@@ -8,17 +8,18 @@ datasource db {
 }
 
 model User {
-  id          String        @id @default(uuid())
-  email       String        @unique
-  name        String
-  nickname    String
-  password    String
-  status      Boolean
-  createdAt   DateTime?     @default(now())
-  updatedAt   DateTime?     @updatedAt
-  Appointment Appointment[]
-  Work        Work[]
-  Payment     Payment[]
+  id               String             @id @default(uuid())
+  email            String             @unique
+  name             String
+  nickname         String
+  password         String
+  status           Boolean
+  createdAt        DateTime?          @default(now())
+  updatedAt        DateTime?          @updatedAt
+  Appointment      Appointment[]
+  Work             Work[]
+  Payment          Payment[]
+  MercadoPagoToken MercadoPagoToken[]
 
   @@map("users")
 }
@@ -69,6 +70,27 @@ model Payment {
   updatedAt     DateTime      @updatedAt
 
   @@map("payments")
+}
+
+model MercadoPagoToken {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+
+  @@map("mptoken")
+}
+
+model MercadoPagoSession {
+  id           String   @id @default(uuid())
+  userId       String
+  state        String   @unique
+  codeVerifier String
+  createdAt    DateTime @default(now())
+
+  @@map("mptokensession")
 }
 
 enum AppointmentStatus {
