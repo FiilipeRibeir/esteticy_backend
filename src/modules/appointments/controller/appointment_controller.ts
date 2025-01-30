@@ -84,7 +84,7 @@ class AppointmentUpdateController {
         return response.status(400).send({ message: "O ID é obrigatório para atualizar um compromisso" });
       }
 
-      if (!date && !status && !paymentStatus && paidAmount === undefined) {
+      if (!date && !status && !paymentStatus && !paidAmount) {
         return response.status(400).send({ message: "Informe pelo menos um campo para atualização" });
       }
 
@@ -104,4 +104,3 @@ class AppointmentUpdateController {
 }
 
 export { AppointmentCreateController, AppointmentDeleteController, AppointmentGetController, AppointmentGetFilteredController, AppointmentUpdateController };
-
