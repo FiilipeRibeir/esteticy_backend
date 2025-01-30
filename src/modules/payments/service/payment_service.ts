@@ -6,6 +6,7 @@ import logger from "../../../config/logger";
 import prismaClient from "../../../prisma";
 import { PaymentCreateProps, PaymentWebhookProps } from "../model/payment_interface";
 import MercadoPagoError from "../utils/Error";
+import OAuthService from "../../oauth_mp/service/oauth_mp_service";
 
 class CreatePaymentService {
   async execute({ userId, external_reference, transactionAmount, description, paymentMethodId, email }: PaymentCreateProps): Promise<any> {
@@ -14,11 +15,48 @@ class CreatePaymentService {
     });
 
     if (!user) {
-      throw new HttpError("user not found", 404);
+      throw new HttpError("User not found", 404);
     }
 
+    let mptoken = await prismaClient.mercadoPagoToken.findUnique({
+      where: { userId },
+    });
+
+    if (!mptoken) {
+      throw new HttpError("Mercado Pago token not found", 404);
+    }
+
+    // Verifica se o accessToken expirou
+    const now = new Date();
+    if (mptoken.expiresAt <= now) {
+      try {
+        console.log("Access token expired, refreshing...");
+
+        const tokenResponse = await new OAuthService(
+          process.env.MERCADO_PAGO_CLIENT_ID!,
+          process.env.MERCADO_PAGO_CLIENT_SECRET!,
+          process.env.MERCADO_PAGO_REDIRECT_URI!
+        ).refreshAccessToken(mptoken.refreshToken);
+
+        // Atualiza o accessToken e expiresAt no banco de dados
+        mptoken = await prismaClient.mercadoPagoToken.update({
+          where: { userId },
+          data: {
+            accessToken: tokenResponse.access_token,
+            expiresAt: new Date(Date.now() + tokenResponse.expires_in * 1000),
+          },
+        });
+
+        console.log("Access token successfully refreshed.");
+      } catch (error) {
+        console.error("Failed to refresh access token:", error);
+        throw new HttpError("Failed to refresh Mercado Pago access token", 500);
+      }
+    }
+
+    // Criar cliente Mercado Pago com o accessToken atualizado
     const client = new MercadoPagoConfig({
-      accessToken: /* user.accessToken */ process.env.MERCADO_PAGO_ACCESS_TOKEN || "",
+      accessToken: mptoken.accessToken,
       options: { timeout: 5000 },
     });
 
@@ -43,9 +81,7 @@ class CreatePaymentService {
       const response = await payment.create({ body, requestOptions });
 
       if (!response.id) {
-        throw new Error(
-          "Transaction ID not returned by Mercado Pago. Invalid payment."
-        );
+        throw new Error("Transaction ID not returned by Mercado Pago. Invalid payment.");
       }
 
       const transactionId = response.id;
@@ -89,10 +125,9 @@ class WebhookService {
         return { message: "Event ignored" };
       }
 
-      // Buscar o pagamento pelo transactionId
       const payment = await prismaClient.payment.findUnique({
         where: { transactionId: resource },
-        include: { user: true },
+        include: { user: true }, // Obtém o usuário relacionado ao pagamento
       });
 
       if (!payment || !payment.user) {
@@ -100,9 +135,18 @@ class WebhookService {
         throw new HttpError("Payment or user not found", 404);
       }
 
-      // Criar cliente Mercado Pago
+      // Buscar o token do Mercado Pago associado ao usuário
+      const mpToken = await prismaClient.mercadoPagoToken.findUnique({
+        where: { userId: payment.user.id },
+      });
+
+      if (!mpToken || !mpToken.accessToken) {
+        logger.error("Mercado Pago token not found for user", { userId: payment.user.id });
+        throw new HttpError("Mercado Pago access token not found", 404);
+      }
+
       const client = new MercadoPagoConfig({
-        accessToken: /* payment.user.accessToken */ process.env.MERCADO_PAGO_ACCESS_TOKEN || "",
+        accessToken: mpToken.accessToken,
         options: { timeout: 5000 },
       });
 
@@ -145,3 +189,4 @@ class WebhookService {
 }
 
 export { CreatePaymentService, WebhookService };
+
