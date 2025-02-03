@@ -3,8 +3,8 @@ import { PaymentWebhookController } from "../../modules/payments/controller/paym
 
 async function paymentRoutes(app: FastifyInstance) {
   app.post('/webhook', async (request, reply) => {
-    return new PaymentWebhookController().handle(request, reply)
-  });
+    return new PaymentWebhookController().handle(request, reply);
+  });  
 }
 
 export default paymentRoutes;
