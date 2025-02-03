@@ -29,8 +29,6 @@ class MercadoPagoProvider implements PaymentProvider {
     const now = new Date();
     if (mptoken.expiresAt <= now) {
       try {
-        console.log("Access token expired, refreshing...");
-
         const tokenResponse = await new OAuthService(
           process.env.MERCADO_PAGO_CLIENT_ID!,
           process.env.MERCADO_PAGO_CLIENT_SECRET!,
@@ -52,7 +50,6 @@ class MercadoPagoProvider implements PaymentProvider {
       }
     }
 
-    console.log("Loaded WEBHOOK_URL:", process.env.WEBHOOK_URL);
     if (!process.env.WEBHOOK_URL) {
       throw new Error("WEBHOOK_URL is not defined!");
     }
@@ -100,7 +97,7 @@ class MercadoPagoProvider implements PaymentProvider {
           status: PaymentStatus.PENDENTE,
           method: data.paymentMethodId,
           transactionId: transactionId.toString(),
-          expiresAt: expirationDate, // Salvar a data de expiração no banco
+          expiresAt: expirationDate,
         },
       });
 
@@ -120,13 +117,11 @@ class MercadoPagoProvider implements PaymentProvider {
 
   async webhook(data: PaymentWebhookProps) {
     if (!data.resource || !data.topic) {
-      logger.warn("Incomplete data in webhook", { resource: data.resource, topic: data.topic });
       throw new HttpError("Incomplete data", 400);
     }
 
     try {
       if (data.topic !== "payment") {
-        logger.warn(`Unrecognized event: ${data.topic}`);
         return { message: "Event ignored" };
       }
 
@@ -140,64 +135,23 @@ class MercadoPagoProvider implements PaymentProvider {
         throw new HttpError("Payment or user not found", 404);
       }
 
-      const mpToken = await prismaClient.mercadoPagoToken.findUnique({
-        where: { userId: payment.user.id },
-      });
-
-      if (!mpToken || !mpToken.accessToken) {
-        logger.error("Mercado Pago token not found for user", { userId: payment.user.id });
-        throw new HttpError("Mercado Pago access token not found", 404);
+      if (payment.expiresAt > new Date()) {
+        return { message: "Pagamento ainda válido" };
       }
 
-      const client = new MercadoPagoConfig({
-        accessToken: mpToken.accessToken,
-        options: { timeout: 5000 },
-      });
-
-      const paymentApi = new Payment(client);
-      const paymentResponse = await paymentApi.get({ id: data.resource });
-
-      if (!paymentResponse.external_reference) {
-        logger.error("External reference missing in payment response");
-        throw new HttpError("External reference missing", 400);
-      }
-
-      const { status, transaction_amount: amount, external_reference } = paymentResponse;
-
-      if (status === "expired") {
-        logger.warn("Payment expired. Deleting from database.", { transactionId: data.resource });
-
-        await prismaClient.payment.delete({
-          where: { transactionId: data.resource },
-        });
-
-        await prismaClient.appointment.delete({
-          where: { id: external_reference },
-        });
-
-        return { message: "Payment expired and removed from database" };
-      }
-
-      const updatedPayment = await prismaClient.payment.update({
+      // Verificar se o pagamento existe antes de tentar excluir
+      const paymentToDelete = await prismaClient.payment.findUnique({
         where: { transactionId: data.resource },
-        data: {
-          amount,
-          status: status === "approved" ? PaymentStatus.CONFIRMADO : PaymentStatus.PENDENTE,
-        },
       });
 
-      await prismaClient.appointment.update({
-        where: { id: external_reference },
-        data: {
-          paymentStatus: updatedPayment.status,
-          paidAmount: amount,
-        },
-      });
+      if (paymentToDelete) {
+        await prismaClient.payment.delete({ where: { transactionId: data.resource } });
 
-      return {
-        message: "Payment and appointment updated successfully",
-        payment: { transactionId: data.resource, amount, status },
-      };
+        await prismaClient.appointment.delete({ where: { id: payment.appointmentId } });
+      } else {
+      }
+
+      return { message: "Payment expired and removed from database" };
     } catch (error) {
       logger.error(`Error processing webhook: ${error}`, { resource: data.resource, topic: data.topic });
       throw new HttpError("Error processing webhook", 500);

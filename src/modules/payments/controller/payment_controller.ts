@@ -5,8 +5,6 @@ import { WebhookService } from "../service/payment_service";
 class PaymentWebhookController {
   async handle(request: FastifyRequest, response: FastifyReply) {
     try {
-      console.log("Recebendo webhook:", request.body); // Log para depuração
-
       // Tipagem do corpo da requisição (assertion de tipo)
       const body = request.body as { resource?: string; topic?: string; data?: { id: string }; type?: string };
 

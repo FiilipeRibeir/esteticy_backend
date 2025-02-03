@@ -1,4 +1,4 @@
-import { PaymentCreateProps, paymentEvents, PaymentProvider, PaymentWebhookProps } from "../gateway/provider/payment_gateway_interface";
+import { PaymentCreateProps, paymentEvents, PaymentWebhookProps } from "../gateway/provider/payment_gateway_interface";
 import PaymentProviderFactory from "../gateway/provider/payment_provider_factory";
 
 class CreatePaymentService {
@@ -7,7 +7,6 @@ class CreatePaymentService {
     return provider.createPayment(data);
   }
 }
-
 
 class WebhookService {
   async execute(data: PaymentWebhookProps): Promise<any> {
